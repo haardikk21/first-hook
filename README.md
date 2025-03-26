@@ -1,66 +1,43 @@
-## Foundry
+# Building your first hook
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+A really simple onchain "points program"
 
-Foundry consists of:
+Assume you launch some sort of token - $XYZ
 
--   **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
--   **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
--   **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
--   **Chisel**: Fast, utilitarian, and verbose solidity REPL.
+You set up a pool on Uniswap for ETH/XYZ
 
-## Documentation
+your goal is to incentivize people to buy XYZ for ETH in that pool
 
-https://book.getfoundry.sh/
+- everytime someone buys XYZ for ETH in that pool, our hook will assign points to an address the user says they want to receive the points on
 
-## Usage
+points themselves will act as an ERC-20 token onchain, we're gonna mint $POINTS tokens to people who buy XYZ for ETH on Uniswap
 
-### Build
+> NOTE: this is a proof of concept and not a production ready design
 
-```shell
-$ forge build
-```
+## How many points to give out per trade?
 
-### Test
+For every swap that happens, we're gonna give out 20% of the amount of ETH that was used to purchase XYZ as points.
 
-```shell
-$ forge test
-```
+For e.g. if someone swaps 5 ETH for XYZ, they get 1 POINT token
 
-### Format
+## General purpose vs. specific hooks
 
-```shell
-$ forge fmt
-```
+As developers, you have a choice to build hooks that either only work for one specific pool, or you can build a hook that is more general and can be used by other teams and other pool creators and such.
 
-### Gas Snapshots
+We're gonna build our hook today as a somewhat general purpose hook, where anybody who has an ETH/TOKEN pool of any sort, can incentivize their community to purchase their TOKEN for ETH by issuing them points.
 
-```shell
-$ forge snapshot
-```
+## hookdata
 
-### Anvil
+the user is going to specify which address they want their points to go to
 
-```shell
-$ anvil
-```
+and the way they tell us this information is through `hookData`
 
-### Deploy
+we expect the user to send an address to us through `hookData`
 
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
-```
+and if `hookData` is empty, or it contains an invalid address, nobody gets points for that swap
 
-### Cast
+## Improvements
 
-```shell
-$ cast <subcommand>
-```
+- we are NOT creating different $POINT tokens for each pool. in a better implementation, you want to not use a single ERC-20 for $POINTs and instead either deploy a new ERC-20 to represent points for each individual pool, or you want to use something like ERC-1155/ERC-6909 multi-token standards to create different point tokens for each pool
 
-### Help
-
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
-```
+- someone can add liquidity, remove liquidity, add liquidity, remove liquidity, and keep doing this over and over to farm $POINT tokens. in a more sophisticated implementation, instead of giving points while adding liquidity. when somenoe adds liquidity you jsut "take note" of that, and then later when they remove liquidity you give them points based on how long they had that liquidity locked up.
