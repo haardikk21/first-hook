@@ -1,43 +1,99 @@
 # Building your first hook
 
-A really simple onchain "points program"
+A really really simple "points" program onchain
 
-Assume you launch some sort of token - $XYZ
+Assume you have some sort of ETH/XYZ pool on Uni v4, as you sort of trade in this pool
 
-You set up a pool on Uniswap for ETH/XYZ
+if you are spending ETH to purchase XYZ token, we're gonna give you some "points" for that
 
-your goal is to incentivize people to buy XYZ for ETH in that pool
+an incentive for people to purchase your XYZ token with ETH
 
-- everytime someone buys XYZ for ETH in that pool, our hook will assign points to an address the user says they want to receive the points on
+> NOTE: this is a barebones proof of concept. you should not use this as it is in a production environment.
 
-points themselves will act as an ERC-20 token onchain, we're gonna mint $POINTS tokens to people who buy XYZ for ETH on Uniswap
+### How?
 
-> NOTE: this is a proof of concept and not a production ready design
+points themselves will also be represented as an ERC-1155 token
 
-## How many points to give out per trade?
+(1155 instead of 20 so we can have unique points tokens per pool)
 
-For every swap that happens, we're gonna give out 20% of the amount of ETH that was used to purchase XYZ as points.
+"earning points" => "minting $POINTS tokens to the user"
 
-For e.g. if someone swaps 5 ETH for XYZ, they get 1 POINT token
+### How many points to give out?
 
-## General purpose vs. specific hooks
+for every swap that happens, we're gonna give out 20% of the amount of ETH that was spent as $POINTS tokens
 
-As developers, you have a choice to build hooks that either only work for one specific pool, or you can build a hook that is more general and can be used by other teams and other pool creators and such.
+e.g. if someone spends 5 ETH, we give them 1 $POINT token
 
-We're gonna build our hook today as a somewhat general purpose hook, where anybody who has an ETH/TOKEN pool of any sort, can incentivize their community to purchase their TOKEN for ETH by issuing them points.
+### High level design
 
-## hookdata
+Alice does a swap on our hooked pool
 
-the user is going to specify which address they want their points to go to
+Inside `afterSwap`, our hook is gonna check a few things
 
-and the way they tell us this information is through `hookData`
+1. we are in an ETH/XYZ pool of some sort (i.e. ETH is one of the tokens in the pool)
+2. Alice is spending ETH to purchase XYZ
+3. Figure out exactly how much ETH alice spent and calculate amount of points to give her accordingly
+4. Mint $POINTS tokens
 
-we expect the user to send an address to us through `hookData`
+we're gonna create a little helper function called `_assignPoints` that does the actual token minting
 
-and if `hookData` is empty, or it contains an invalid address, nobody gets points for that swap
+Detour: how do we know who to mint the POINT tokens to? what address?
 
-## Improvements
+### hookData
 
-- we are NOT creating different $POINT tokens for each pool. in a better implementation, you want to not use a single ERC-20 for $POINTs and instead either deploy a new ERC-20 to represent points for each individual pool, or you want to use something like ERC-1155/ERC-6909 multi-token standards to create different point tokens for each pool
+we're gonna have the user specify an address to mint points to
 
-- someone can add liquidity, remove liquidity, add liquidity, remove liquidity, and keep doing this over and over to farm $POINT tokens. in a more sophisticated implementation, instead of giving points while adding liquidity. when somenoe adds liquidity you jsut "take note" of that, and then later when they remove liquidity you give them points based on how long they had that liquidity locked up.
+this enables a user to "donate" their points to someone else if they wish to
+
+MOST hook functions (including \_afterSwap) have a `hookData` argument present as the last argument of the function
+
+users can pass in arbitrary data to your hook contract through this parameter
+
+### BalanceDelta numeric signs
+
+in uniswap by convention, whenever we talk about money changing hands
+
+token transfers are always represented from the perspective of the "caller" (Alice)
+
+if a token transfer amount is a negative number
+
+negative implies money coming out of Alice's wallet and going into Uniswap
+
+if amount is a positive number
+
+Money going into Alice's wallet and coming out of Uniswap
+
+### KYC Pools
+
+e.g. you're only allowed to swap if you can present some sort of KYC proof (ZK proof)
+
+your hook ideally wants to verify that ZK proof. if it is valid, let you do the swap. otherwise, dont let you do the swap.
+
+how do we give the ZK proof to the hook contract? we pass it in via `hookData`
+
+---
+
+Flow of a swap in a hooked pool
+
+Alice
+-> Router contract (initiates a swap)
+-> Uniswap PoolManager contract
+-> has no way of knowing here who Alice is
+-> msg.sender = Router contract
+
+            -> Hook contract
+                (msg.sender = address(uniswap poolmanager))
+                (address sender)
+
+`tx.origin`
+
+that is true, but only in this very simple case
+
+in an alternative case what might be happening is
+
+Alice is using a smart contract wallet(account abstraction)
+A paymaster or relayer of some sort is the one actually putting the transaction onchain
+
+`tx.origin` = address(relayer) != address(alice)
+
+GENERALLY speaking, both Uniswap and by extension our hook, has no inherent way of knowing the address of Alice
